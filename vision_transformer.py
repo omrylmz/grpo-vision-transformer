@@ -6,7 +6,14 @@ from torch import nn as nn
 # 1. Define a Vision Transformer for Binary Classification
 # -----------------------------
 
-class ViTClassifier(nn.Module):
+class VisionTransformerClassifier(nn.Module):
+    """
+    A simple Vision Transformer (ViT) for binary classification.
+    The image is split into patches, projected into an embedding space,
+    and passed through a transformer encoder. The class token is then used
+    to make a binary prediction.
+    """
+
     def __init__(self, image_size=32, patch_size=4, in_channels=3,
                  embed_dim=64, num_heads=4, num_layers=2, mlp_ratio=4, num_classes=2):
         super().__init__()
@@ -17,9 +24,8 @@ class ViTClassifier(nn.Module):
         # Linear projection of flattened patches
         self.patch_embed = nn.Linear(self.patch_dim, embed_dim)
 
-        # Class token (learned)
+        # Learnable class token and positional embeddings for patches + class token
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        # Positional embedding (for all patches + class token)
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_dim))
 
         # Transformer encoder layers
@@ -44,29 +50,26 @@ class ViTClassifier(nn.Module):
             nn.init.constant_(self.patch_embed.bias, 0)
 
     def forward(self, x):
-        # x shape: (batch, in_channels, image_size, image_size)
+        """
+        x: (batch, in_channels, image_size, image_size)
+        """
         batch_size = x.shape[0]
-        # Divide image into patches
+        # Unfold image into patches: result shape -> (batch, num_patches, patch_dim)
         patches = x.unfold(2, x.shape[2] // (x.shape[2] // 4), x.shape[2] // (x.shape[2] // 4)) \
             .unfold(3, x.shape[3] // (x.shape[3] // 4), x.shape[3] // (x.shape[3] // 4))
-        # For CIFAR10 (32x32) with patch_size=4, this yields shape (batch, in_channels, 8, 8, 4, 4)
-        patches = patches.contiguous().view(batch_size, self.num_patches, -1)  # (B, num_patches, patch_dim)
+        patches = patches.contiguous().view(batch_size, self.num_patches, -1)
 
-        # Project patches to embeddings
+        # Project patches to embedding space
         patch_embeddings = self.patch_embed(patches)  # (B, num_patches, embed_dim)
 
-        # Prepend class token
+        # Prepend the class token and add positional embeddings
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # (B, 1, embed_dim)
         x = torch.cat((cls_tokens, patch_embeddings), dim=1)  # (B, num_patches+1, embed_dim)
-
-        # Add positional embeddings
         x = x + self.pos_embed
+        x = x.transpose(0, 1)  # Transformer expects shape (seq_len, batch, embed_dim)
+        x = self.transformer_encoder(x)
 
-        # Permute for transformer: (seq_len, batch, embed_dim)
-        x = x.transpose(0, 1)
-        x = self.transformer_encoder(x)  # (seq_len, batch, embed_dim)
-
-        # Take the class token (first token)
+        # Use the output corresponding to the class token
         cls_out = x[0]
-        logits = self.mlp_head(cls_out)  # (batch, num_classes)
+        logits = self.mlp_head(cls_out)
         return logits

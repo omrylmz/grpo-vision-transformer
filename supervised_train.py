@@ -7,7 +7,11 @@ from torch import nn as nn
 # 3. Supervised Training Loop
 # -----------------------------
 
-def supervised_train(model, train_loader, test_loader, num_epochs=5, lr=1e-3, device='cuda'):
+def supervised_training_loop(model, train_loader, test_loader, num_epochs=5, lr=1e-3, device='cuda'):
+    """
+    Trains the model in a supervised manner using cross-entropy loss and Adam optimizer.
+    Also evaluates test accuracy after each epoch and plots the training loss and test accuracy.
+    """
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
@@ -29,7 +33,7 @@ def supervised_train(model, train_loader, test_loader, num_epochs=5, lr=1e-3, de
         epoch_loss = running_loss / len(train_loader.dataset)
         train_losses.append(epoch_loss)
 
-        # Evaluate on test set
+        # Evaluate test accuracy
         model.eval()
         correct = 0
         total = 0
