@@ -1,6 +1,6 @@
 import torch
 
-from get_dataloaders import prepare_cat_dog_dataloaders
+from get_dataloaders import prepare_dataloaders
 from grpo_rl_train import grpo_rl_finetuning_generic
 from grpo_helpers import default_reward_function
 from train_helpers import evaluate_model
@@ -25,7 +25,7 @@ def main():
     supervised_lr = 1e-3
 
     # Use the ViT application: cat vs. dog classification.
-    train_loader, test_loader = prepare_cat_dog_dataloaders(batch_size=batch_size)
+    train_loader, test_loader = prepare_dataloaders(batch_size=batch_size)
 
     model = VisionTransformerClassifier(image_size=32, patch_size=4, in_channels=3,
                                         embed_dim=64, num_heads=4, num_layers=2, num_classes=2)

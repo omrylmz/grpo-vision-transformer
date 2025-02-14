@@ -87,11 +87,15 @@ def grpo_rl_finetuning_generic(model, data_loader, num_rl_iters=3, group_size=5,
         rl_losses.append(avg_rl_loss)
         print(f"RL Iteration {rl_iter + 1}/{num_rl_iters}, Avg RL Loss: {avg_rl_loss:.4f}")
 
+    grpo_rl_finetuning_generic_plot(num_rl_iters, rl_losses)
+    
+    return rl_losses
+
+
+def grpo_rl_finetuning_generic_plot(num_rl_iters, rl_losses):
     plt.figure(figsize=(6, 4))
     plt.plot(range(1, num_rl_iters + 1), rl_losses, marker='o')
     plt.xlabel("RL Iteration")
     plt.ylabel("Average RL Loss")
     plt.title("GRPO RL Loss Over Iterations")
     plt.show()
-
-    return rl_losses

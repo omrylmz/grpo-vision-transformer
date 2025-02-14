@@ -8,7 +8,7 @@ from torchvision import transforms as transforms
 # 2. Data Preparation: Filter CIFAR10 for Cat (label 3) and Dog (label 5)
 # -----------------------------
 
-def prepare_cat_dog_dataloaders(batch_size=128):
+def prepare_dataloaders(batch_size=128):
     """
     Loads CIFAR-10, filters for cat (class 3) and dog (class 5), remaps labels:
       cat -> 0, dog -> 1.

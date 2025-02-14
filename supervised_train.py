@@ -29,6 +29,12 @@ def supervised_training(model, train_loader, test_loader, num_epochs=5, lr=1e-3,
         print(f"Epoch {epoch + 1}: Loss = {epoch_loss:.4f}, Test Acc = {test_acc:.4f}")
 
     # Plot training loss and test accuracy.
+    supervised_training_plot(num_epochs, train_losses, test_accuracies)
+
+    return train_losses, test_accuracies
+
+
+def supervised_training_plot(num_epochs, train_losses, test_accuracies):
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
     plt.plot(range(1, num_epochs + 1), train_losses, marker='o')
@@ -42,4 +48,3 @@ def supervised_training(model, train_loader, test_loader, num_epochs=5, lr=1e-3,
     plt.title("Test Accuracy")
     plt.tight_layout()
     plt.show()
-    return train_losses, test_accuracies
