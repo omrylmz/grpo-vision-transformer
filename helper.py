@@ -92,6 +92,23 @@ def compute_kl_divergence(p_current, p_ref, eps=1e-8):
     return kl.mean()
 
 
+def train_model(model, data_loader, device, optimizer, loss_fn):
+    """
+    Trains the model on the given data_loader and returns the accuracy.
+    """
+    model.train()
+    running_loss = 0.0
+    for images, labels in data_loader:
+        images, labels = images.to(device), labels.to(device)
+        optimizer.zero_grad()
+        logits = model(images)
+        loss = loss_fn(logits, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item() * images.size(0)
+    return running_loss / len(data_loader.dataset)
+
+
 def evaluate_model(model, data_loader, device):
     """
     Evaluates the model on the given data_loader and returns the accuracy.

@@ -2,6 +2,8 @@ import torch
 from matplotlib import pyplot as plt
 from torch import nn as nn
 
+from helper import evaluate_model, train_model
+
 
 # -----------------------------
 # 3. Supervised Training Loop
@@ -18,30 +20,11 @@ def supervised_training(model, train_loader, test_loader, num_epochs=5, lr=1e-3,
 
     train_losses, test_accuracies = [], []
     for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            logits = model(images)
-            loss = criterion(logits, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * images.size(0)
-        epoch_loss = running_loss / len(train_loader.dataset)
+        epoch_loss = train_model(model, train_loader, device, optimizer, criterion)
         train_losses.append(epoch_loss)
 
         # Evaluate on test set
-        model.eval()
-        correct, total = 0, 0
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                logits = model(images)
-                preds = logits.argmax(dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
-        test_acc = correct / total
+        test_acc = evaluate_model(model, test_loader, device)
         test_accuracies.append(test_acc)
         print(f"Epoch {epoch + 1}: Loss = {epoch_loss:.4f}, Test Acc = {test_acc:.4f}")
 
