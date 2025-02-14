@@ -2,7 +2,7 @@ import torch
 from matplotlib import pyplot as plt
 from torch import nn as nn
 
-from helper import evaluate_model, train_model
+from train_helpers import train_model, evaluate_model
 
 
 # -----------------------------

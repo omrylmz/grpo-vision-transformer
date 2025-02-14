@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 # -----------------------------------------------------------------------------
-# 4. Helper Function: KL Divergence Computation
+# 4. Helper Functions for GRPO Training
 # -----------------------------------------------------------------------------
 
 def extract_logits(model_output):
@@ -90,36 +90,3 @@ def compute_kl_divergence(p_current, p_ref, eps=1e-8):
     """
     kl = torch.sum(p_current * (torch.log(p_current + eps) - torch.log(p_ref + eps)), dim=1)
     return kl.mean()
-
-
-def train_model(model, data_loader, device, optimizer, loss_fn):
-    """
-    Trains the model on the given data_loader and returns the accuracy.
-    """
-    model.train()
-    running_loss = 0.0
-    for images, labels in data_loader:
-        images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
-        logits = model(images)
-        loss = loss_fn(logits, labels)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item() * images.size(0)
-    return running_loss / len(data_loader.dataset)
-
-
-def evaluate_model(model, data_loader, device):
-    """
-    Evaluates the model on the given data_loader and returns the accuracy.
-    """
-    model.eval()
-    correct, total = 0, 0
-    with torch.no_grad():
-        for images, labels in data_loader:
-            images, labels = images.to(device), labels.to(device)
-            logits = model(images)
-            preds = logits.argmax(dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-    return correct / total

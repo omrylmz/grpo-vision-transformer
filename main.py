@@ -2,7 +2,8 @@ import torch
 
 from get_dataloaders import prepare_cat_dog_dataloaders
 from grpo_rl_train import grpo_rl_finetuning_generic
-from helper import default_reward_function, evaluate_model
+from grpo_helpers import default_reward_function
+from train_helpers import evaluate_model
 from supervised_train import supervised_training
 from vision_transformer import VisionTransformerClassifier
 

@@ -3,7 +3,7 @@ import copy
 import torch
 from matplotlib import pyplot as plt
 
-from helper import get_probability_distribution, sample_group_info, compute_advantages, compute_surrogate_loss, \
+from grpo_helpers import get_probability_distribution, sample_group_info, compute_advantages, compute_surrogate_loss, \
     compute_kl_divergence, default_reward_function
 
 
