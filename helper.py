@@ -19,6 +19,7 @@ def extract_logits(model_output):
     else:
         raise ValueError("Unknown model output format!")
 
+
 def get_probability_distribution(model, inputs, device='cuda'):
     """
     Passes inputs through the model and returns the softmax probability distribution.
@@ -27,6 +28,7 @@ def get_probability_distribution(model, inputs, device='cuda'):
     logits = extract_logits(model_output)
     return F.softmax(logits, dim=1)
 
+
 def default_reward_function(sampled_class, true_label):
     """
     Default reward function:
@@ -34,6 +36,7 @@ def default_reward_function(sampled_class, true_label):
     This can be replaced with a custom reward design.
     """
     return 1.0 if sampled_class == true_label else 0.0
+
 
 def sample_group_info(current_dist, ref_dist, true_label, group_size, reward_function=default_reward_function):
     """
@@ -57,6 +60,7 @@ def sample_group_info(current_dist, ref_dist, true_label, group_size, reward_fun
         group_ratios.append(ratio)
     return group_log_probs, group_rewards, group_ratios
 
+
 def compute_advantages(group_rewards, device):
     """
     Computes advantages as the z-score of the group rewards.
@@ -69,6 +73,7 @@ def compute_advantages(group_rewards, device):
     advantages = (rewards_tensor - mean_reward) / (std_reward + eps)
     return advantages
 
+
 def compute_surrogate_loss(group_ratios, advantages, clip_eps):
     """
     Computes the surrogate loss for one example using PPO-style clipping.
@@ -78,9 +83,26 @@ def compute_surrogate_loss(group_ratios, advantages, clip_eps):
     surrogate_terms = torch.min(ratios_tensor * advantages, clipped_ratios * advantages)
     return -surrogate_terms.mean()
 
+
 def compute_kl_divergence(p_current, p_ref, eps=1e-8):
     """
     Computes the average KL divergence between current and reference distributions.
     """
     kl = torch.sum(p_current * (torch.log(p_current + eps) - torch.log(p_ref + eps)), dim=1)
     return kl.mean()
+
+
+def evaluate_model(model, data_loader, device):
+    """
+    Evaluates the model on the given data_loader and returns the accuracy.
+    """
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for images, labels in data_loader:
+            images, labels = images.to(device), labels.to(device)
+            logits = model(images)
+            preds = logits.argmax(dim=1)
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+    return correct / total

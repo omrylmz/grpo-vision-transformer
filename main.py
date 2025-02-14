@@ -2,7 +2,7 @@ import torch
 
 from get_dataloaders import prepare_cat_dog_dataloaders
 from grpo_rl_train import grpo_rl_finetuning_generic
-from helper import default_reward_function
+from helper import default_reward_function, evaluate_model
 from supervised_train import supervised_training
 from vision_transformer import VisionTransformerClassifier
 
@@ -33,16 +33,7 @@ def main():
     supervised_training(model, train_loader, test_loader, num_epochs=num_supervised_epochs,
                         lr=supervised_lr, device=device)
 
-    model.eval()
-    correct, total = 0, 0
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            logits = model(images)
-            preds = logits.argmax(dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-    initial_acc = correct / total
+    initial_acc = evaluate_model(model, train_loader, device)
     print(f"Supervised model accuracy: {initial_acc:.4f}")
 
     print("Starting GRPO RL fine-tuning...")
@@ -50,16 +41,8 @@ def main():
                                clip_eps=0.2, beta=0.04, rl_lr=1e-4, device=device,
                                reward_function=default_reward_function)
 
-    model.eval()
-    correct, total = 0, 0
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            logits = model(images)
-            preds = logits.argmax(dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-    final_acc = correct / total
+    final_acc = evaluate_model(model, train_loader, device)
+
     print(f"Post-RL model accuracy: {final_acc:.4f}")
 
 
