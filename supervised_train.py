@@ -7,18 +7,16 @@ from torch import nn as nn
 # 3. Supervised Training Loop
 # -----------------------------
 
-def supervised_training_loop(model, train_loader, test_loader, num_epochs=5, lr=1e-3, device='cuda'):
+def supervised_training(model, train_loader, test_loader, num_epochs=5, lr=1e-3, device='cuda'):
     """
-    Trains the model in a supervised manner using cross-entropy loss and Adam optimizer.
-    Also evaluates test accuracy after each epoch and plots the training loss and test accuracy.
+    Supervised training loop using cross-entropy loss.
+    Returns lists of training losses and test accuracies per epoch.
     """
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
-    train_losses = []
-    test_accuracies = []
-
+    train_losses, test_accuracies = [], []
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -33,10 +31,9 @@ def supervised_training_loop(model, train_loader, test_loader, num_epochs=5, lr=
         epoch_loss = running_loss / len(train_loader.dataset)
         train_losses.append(epoch_loss)
 
-        # Evaluate test accuracy
+        # Evaluate on test set
         model.eval()
-        correct = 0
-        total = 0
+        correct, total = 0, 0
         with torch.no_grad():
             for images, labels in test_loader:
                 images, labels = images.to(device), labels.to(device)
@@ -48,20 +45,18 @@ def supervised_training_loop(model, train_loader, test_loader, num_epochs=5, lr=
         test_accuracies.append(test_acc)
         print(f"Epoch {epoch + 1}: Loss = {epoch_loss:.4f}, Test Acc = {test_acc:.4f}")
 
-    # Plot training loss and test accuracy
+    # Plot training loss and test accuracy.
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
     plt.plot(range(1, num_epochs + 1), train_losses, marker='o')
     plt.xlabel("Epoch")
     plt.ylabel("Training Loss")
     plt.title("Supervised Training Loss")
-
     plt.subplot(1, 2, 2)
     plt.plot(range(1, num_epochs + 1), test_accuracies, marker='o')
     plt.xlabel("Epoch")
     plt.ylabel("Test Accuracy")
     plt.title("Test Accuracy")
-
     plt.tight_layout()
     plt.show()
     return train_losses, test_accuracies
