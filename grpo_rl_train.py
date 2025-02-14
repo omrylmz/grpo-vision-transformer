@@ -14,88 +14,141 @@ from torch.nn import functional as F
 # compute the probability ratios with respect to a reference model,
 # clip the ratios, add a KL divergence penalty, and backpropagate.
 
+def sample_group_info(current_dist, ref_dist, true_label, group_size):
+    """
+    For a single example:
+      - Sample `group_size` predictions from the current distribution.
+      - For each sample, compute:
+          * log probability (from current_dist)
+          * binary reward: 1.0 if sampled prediction equals true_label, else 0.0
+          * probability ratio = current_dist(sample) / (ref_dist(sample) + eps)
+    Returns:
+      group_log_probs: list of log probabilities (differentiable)
+      group_rewards: list of rewards (floats)
+      group_ratios: list of ratio tensors (differentiable)
+    """
+    eps = 1e-8
+    group_log_probs = []
+    group_rewards = []
+    group_ratios = []
+    for _ in range(group_size):
+        # Sample an action from the current distribution.
+        sampled_class = torch.multinomial(current_dist, num_samples=1).item()
+        # Compute log probability (differentiable)
+        log_prob = torch.log(current_dist[sampled_class] + eps)
+        # Compute reward: binary reward (1 if correct, 0 otherwise)
+        reward = 1.0 if sampled_class == true_label else 0.0
+        # Compute ratio: current probability divided by reference probability.
+        ratio = (current_dist[sampled_class] + eps) / (ref_dist[sampled_class] + eps)
+        group_log_probs.append(log_prob)
+        group_rewards.append(reward)
+        group_ratios.append(ratio)
+    return group_log_probs, group_rewards, group_ratios
+
+
+def compute_advantages(group_rewards):
+    """
+    Given a list of rewards for a group, compute the advantage as the z-score:
+        advantage = (reward - mean) / (std + eps)
+    Returns a tensor of advantages.
+    """
+    eps = 1e-8
+    rewards_tensor = torch.tensor(group_rewards, dtype=torch.float,
+                                  device=group_rewards[0].device if isinstance(group_rewards[0],
+                                                                               torch.Tensor) else None)
+    mean_reward = rewards_tensor.mean()
+    std_reward = rewards_tensor.std() if rewards_tensor.std() > 0 else 1.0
+    advantages = (rewards_tensor - mean_reward) / (std_reward + eps)
+    return advantages
+
+
+def compute_surrogate_loss(group_ratios, advantages, clip_eps):
+    """
+    Computes the surrogate loss for a single example:
+      For each sample, calculate:
+          L_sample = min( ratio * advantage, clip(ratio, 1-clip_eps, 1+clip_eps) * advantage )
+      The loss for the example is the negative average of these values.
+    Returns the scalar loss for the example.
+    """
+    # Convert list of ratios to tensor while preserving gradients.
+    ratios_tensor = torch.stack(group_ratios)  # shape: (group_size,)
+    clipped_ratios = torch.clamp(ratios_tensor, 1 - clip_eps, 1 + clip_eps)
+    surrogate_terms = torch.min(ratios_tensor * advantages, clipped_ratios * advantages)
+    return -surrogate_terms.mean()
+
+
 def grpo_rl_finetuning_loop(model, train_loader, num_rl_iters=3, group_size=5, clip_eps=0.2, beta=0.04, rl_lr=1e-4,
                             device='cuda'):
     """
-    Applies GRPO (Group Relative Policy Optimization) for RL fine-tuning.
+    GRPO RL Fine-Tuning Loop
 
     For each image in the batch:
-      - Obtain current probability distribution over classes.
-      - Use a frozen reference model to compute reference probabilities.
-      - For each example, sample a group of predictions and compute:
-           - Log probabilities from the current model.
-           - A binary reward (1 if prediction equals ground truth, else 0).
-           - The ratio of current probability to reference probability.
-      - Compute the advantage as the z-score of rewards within the group.
-      - Compute the surrogate loss with clipping (as in PPO).
-      - Add a KL divergence penalty between current and reference distributions.
-      - Backpropagate the loss and update the model.
+      1. Compute the current model's probability distribution (p_current) and a frozen reference distribution (p_ref).
+      2. For each example:
+         a. Sample a group of predictions and compute log probabilities, rewards, and probability ratios.
+         b. Compute advantages as the z-score of the group rewards.
+         c. Compute the surrogate loss using clipping (as in PPO).
+      3. Compute the KL divergence penalty between p_current and p_ref.
+      4. Sum the surrogate loss and KL penalty to form the total loss.
+      5. Backpropagate and update the model.
+
+    Returns a list of average RL losses per RL iteration and plots the RL loss curve.
     """
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=rl_lr)
 
     rl_losses = []
+    eps = 1e-8
     for rl_iter in range(num_rl_iters):
         model.train()
         running_loss = 0.0
         sample_count = 0
 
-        # Create a frozen reference model from current model state.
+        # Create a frozen reference model from the current state.
         ref_model = copy.deepcopy(model)
         ref_model.eval()
 
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
             batch_size = images.size(0)
+
+            # Get current distribution
             logits = model(images)  # (batch, num_classes)
-            p_current = F.softmax(logits, dim=1)  # (batch, num_classes)
+            p_current = F.softmax(logits, dim=1)
             with torch.no_grad():
-                ref_logits = ref_model(images)  # (batch, num_classes)
+                ref_logits = ref_model(images)
                 p_ref = F.softmax(ref_logits, dim=1)
 
             example_losses = []
-            # Process each example individually.
+            # Process each example in the batch
             for i in range(batch_size):
-                current_dist = p_current[i]  # (num_classes,) - differentiable
-                ref_dist = p_ref[i]  # (num_classes,) - constant
+                current_dist = p_current[i]  # (num_classes,), differentiable
+                ref_dist = p_ref[i]  # (num_classes,), constant
                 true_label = labels[i].item()
 
-                group_log_probs = []
-                group_rewards = []
-                group_ratios = []
-                for _ in range(group_size):
-                    # Sample a prediction from current distribution.
-                    sampled_class = torch.multinomial(current_dist, num_samples=1).item()
-                    log_prob = torch.log(current_dist[sampled_class] + 1e-8)
-                    reward = 1.0 if sampled_class == true_label else 0.0
-                    ratio = (current_dist[sampled_class] + 1e-8) / (ref_dist[sampled_class] + 1e-8)
-
-                    group_log_probs.append(log_prob)
-                    group_rewards.append(reward)
-                    group_ratios.append(ratio)  # Preserve grad by stacking later
-
-                # Stack ratios to maintain gradient flow.
-                group_ratios = torch.stack(group_ratios)  # shape: (group_size,)
-                rewards_tensor = torch.tensor(group_rewards, device=device, dtype=torch.float)
-                mean_reward = rewards_tensor.mean()
-                std_reward = rewards_tensor.std() if rewards_tensor.std() > 0 else 1.0
-                advantages = (rewards_tensor - mean_reward) / (std_reward + 1e-8)
-
-                clipped_ratio = torch.clamp(group_ratios, 1 - clip_eps, 1 + clip_eps)
-                surrogate = torch.min(group_ratios * advantages, clipped_ratio * advantages)
-                example_loss = - surrogate.mean()
+                # Step 1: Sample group information.
+                group_log_probs, group_rewards, group_ratios = sample_group_info(
+                    current_dist, ref_dist, true_label, group_size
+                )
+                # Step 2: Compute advantages for the group.
+                # (Note: Since rewards are scalars, we convert them to tensor here.)
+                advantages = compute_advantages(group_rewards)
+                # Step 3: Compute surrogate loss for this example.
+                example_loss = compute_surrogate_loss(group_ratios, advantages, clip_eps)
                 example_losses.append(example_loss)
 
             if len(example_losses) == 0:
                 continue
-            batch_loss = torch.stack(example_losses).mean()
-            # Compute average KL divergence over the batch.
-            kl = torch.sum(p_current * (torch.log(p_current + 1e-8) - torch.log(p_ref + 1e-8)), dim=1)
+            batch_surrogate_loss = torch.stack(example_losses).mean()
+
+            # Step 4: Compute KL divergence between current and reference distributions.
+            kl = torch.sum(p_current * (torch.log(p_current + eps) - torch.log(p_ref + eps)), dim=1)
             kl_loss = kl.mean()
 
-            total_loss = batch_loss + beta * kl_loss
+            # Step 5: Combine surrogate loss with KL penalty.
+            total_loss = batch_surrogate_loss + beta * kl_loss
 
-            # Ensure total_loss depends on model parameters even if constant.
+            # Ensure total_loss depends on model parameters (avoid constant zero gradients).
             if not total_loss.requires_grad:
                 dummy = sum(p.sum() for p in model.parameters())
                 total_loss = total_loss + 0.0 * dummy
